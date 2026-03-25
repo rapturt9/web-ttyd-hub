@@ -1,14 +1,53 @@
 <script setup>
+import { ref } from "vue";
 import { useSessionStore } from "../stores/sessions";
 import SessionCard from "./SessionCard.vue";
 
 defineProps({
   collapsed: Boolean,
-  mobile: Boolean, // New prop to detect if we are in mobile mode (optional, or just use css media queries)
+  mobile: Boolean,
 });
 
 const emit = defineEmits(["create"]);
 const store = useSessionStore();
+
+// Drag and drop state
+const dragIndex = ref(null);
+const dropTarget = ref(null);
+
+function onDragStart(e, index) {
+  dragIndex.value = index;
+  e.dataTransfer.effectAllowed = "move";
+  // Make the drag image slightly transparent
+  e.target.style.opacity = "0.5";
+}
+
+function onDragEnd(e) {
+  e.target.style.opacity = "";
+  dragIndex.value = null;
+  dropTarget.value = null;
+}
+
+function onDragOver(e, index) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  dropTarget.value = index;
+}
+
+function onDragLeave(e, index) {
+  if (dropTarget.value === index) {
+    dropTarget.value = null;
+  }
+}
+
+function onDrop(e, index) {
+  e.preventDefault();
+  if (dragIndex.value !== null && dragIndex.value !== index) {
+    store.reorder(dragIndex.value, index);
+  }
+  dragIndex.value = null;
+  dropTarget.value = null;
+}
 </script>
 
 <template>
@@ -39,14 +78,25 @@ const store = useSessionStore();
     </div>
 
     <div class="session-list">
-      <SessionCard
-        v-for="s in store.sessions"
+      <div
+        v-for="(s, index) in store.sessions"
         :key="s.name"
-        :session="s"
-        :active="store.current === s.name"
-        :collapsed="collapsed"
-        @click="store.select(s.name)"
-      />
+        class="drag-wrapper"
+        :class="{ 'drop-above': dropTarget === index && dragIndex !== null && dragIndex > index, 'drop-below': dropTarget === index && dragIndex !== null && dragIndex < index }"
+        draggable="true"
+        @dragstart="onDragStart($event, index)"
+        @dragend="onDragEnd"
+        @dragover="onDragOver($event, index)"
+        @dragleave="onDragLeave($event, index)"
+        @drop="onDrop($event, index)"
+      >
+        <SessionCard
+          :session="s"
+          :active="store.current === s.name"
+          :collapsed="collapsed"
+          @click="store.select(s.name)"
+        />
+      </div>
 
       <div v-if="!store.sessions.length" class="empty-hint" v-show="!collapsed">
         <p>No active sessions</p>
@@ -71,7 +121,7 @@ const store = useSessionStore();
 }
 
 .sidebar.collapsed {
-  width: 72px; /* collapsed width for icons */
+  width: 72px;
 }
 
 .sidebar-header {
@@ -123,6 +173,20 @@ const store = useSessionStore();
   gap: 4px;
 }
 
+.drag-wrapper {
+  border-radius: var(--radius-md);
+  border: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.drag-wrapper.drop-above {
+  border-top-color: var(--accent-primary);
+}
+
+.drag-wrapper.drop-below {
+  border-bottom-color: var(--accent-primary);
+}
+
 .empty-hint {
   text-align: center;
   padding: 40px 10px;
@@ -147,12 +211,12 @@ const store = useSessionStore();
     width: var(--sidebar-width);
     transform: translateX(0);
     box-shadow: var(--shadow-md);
-    z-index: 50; /* Above toolbar (30) */
+    z-index: 50;
   }
 
   .sidebar.collapsed {
     transform: translateX(-100%);
-    width: var(--sidebar-width); /* maintain width when hidden */
+    width: var(--sidebar-width);
   }
 }
 </style>

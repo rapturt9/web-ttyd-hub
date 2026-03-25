@@ -11,16 +11,49 @@ export const useSessionStore = defineStore('sessions', () => {
 
   // Track last interaction time per session for sorting
   const lastActive = ref({})
+  // Manual ordering: list of session names in user-defined order
+  const manualOrder = ref([])
 
   async function fetchSessions() {
     const res = await fetch('/api/sessions')
     const data = await res.json()
-    // Sort by last active time (most recent first), then by creation time
-    sessions.value = data.sessions.sort((a, b) => {
-      const aTime = lastActive.value[a.name] || new Date(a.createdAt).getTime()
-      const bTime = lastActive.value[b.name] || new Date(b.createdAt).getTime()
-      return bTime - aTime
-    })
+
+    // If we have a manual order, use it; put unknown sessions at the top sorted by recency
+    if (manualOrder.value.length > 0) {
+      const orderMap = new Map(manualOrder.value.map((name, i) => [name, i]))
+      const known = []
+      const unknown = []
+      for (const s of data.sessions) {
+        if (orderMap.has(s.name)) {
+          known.push(s)
+        } else {
+          unknown.push(s)
+        }
+      }
+      known.sort((a, b) => orderMap.get(a.name) - orderMap.get(b.name))
+      unknown.sort((a, b) => {
+        const aTime = lastActive.value[a.name] || new Date(a.createdAt).getTime()
+        const bTime = lastActive.value[b.name] || new Date(b.createdAt).getTime()
+        return bTime - aTime
+      })
+      sessions.value = [...unknown, ...known]
+    } else {
+      // Default: sort by last active time (most recent first)
+      sessions.value = data.sessions.sort((a, b) => {
+        const aTime = lastActive.value[a.name] || new Date(a.createdAt).getTime()
+        const bTime = lastActive.value[b.name] || new Date(b.createdAt).getTime()
+        return bTime - aTime
+      })
+    }
+    // Sync manual order to current session list
+    manualOrder.value = sessions.value.map(s => s.name)
+  }
+
+  function reorder(fromIndex, toIndex) {
+    if (fromIndex === toIndex) return
+    const item = sessions.value.splice(fromIndex, 1)[0]
+    sessions.value.splice(toIndex, 0, item)
+    manualOrder.value = sessions.value.map(s => s.name)
   }
 
   async function fetchShells() {
@@ -140,6 +173,7 @@ export const useSessionStore = defineStore('sessions', () => {
     stopSession,
     restartSession,
     removeSession,
-    select
+    select,
+    reorder
   }
 })
