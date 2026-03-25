@@ -6,6 +6,7 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 const SessionManager = require('./services/session-manager');
 const sessionsRoute = require('./routes/sessions');
 const setupWebSocket = require('./ws');
+const { setupAuth, checkWsAuth } = require('./auth');
 
 const PORT = parseInt(process.env.PORT || '8384', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -16,6 +17,9 @@ const app = express();
 const server = http.createServer(app);
 
 app.use(express.json());
+
+// Auth must be before all other routes
+setupAuth(app);
 
 const sessionManager = new SessionManager(TTYD_PORT_START, TTYD_PORT_END);
 
@@ -85,6 +89,11 @@ app.get(/^\/(?!api).*/, (req, res) => {
 setupWebSocket(server, sessionManager);
 
 server.on('upgrade', (req, socket, head) => {
+  // Check auth on WebSocket upgrade
+  if (!checkWsAuth(req)) {
+    socket.destroy();
+    return;
+  }
   const sessionName = getSessionNameFromUrl(req.url);
   if (!sessionName) return;
   const session = resolveRunningSession(sessionName);

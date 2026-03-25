@@ -1,4 +1,5 @@
 const { WebSocketServer } = require('ws');
+const { checkWsAuth } = require('./auth');
 
 function setupWebSocket(server, sessionManager) {
   const wss = new WebSocketServer({ noServer: true });
@@ -7,6 +8,10 @@ function setupWebSocket(server, sessionManager) {
     const url = req.url || '';
     const pathname = url.split('?')[0];
     if (pathname !== '/ws') return;
+    if (!checkWsAuth(req)) {
+      socket.destroy();
+      return;
+    }
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit('connection', ws, req);
     });
